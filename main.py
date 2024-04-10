@@ -151,14 +151,14 @@ def testing_2(times,width,height,num_obstacle):
         print("actual_cost:", actual_cost_minmax)
 
         print("----------------------")
-        print("best-case strategy")
+        #print("best-case strategy")
 
         #actual_path_best_case, actual_cost_best_case = run_strategy_in_wts(wts, game_arena, best_case_strategy)
 
         #print("actual_path:", actual_path_best_case)
         #print("actual_cost:", actual_cost_best_case)
 
-        random_system_generation.plot_determined_system_wall(node_list,edge_list,potential_walls, obs,initial_list,width,height,['flag'],actual_path_regret,actual_path_minmax)
+        #random_system_generation.plot_determined_system_wall(node_list,edge_list,potential_walls, obs,initial_list,width,height,['flag'],actual_path_regret,actual_path_minmax)
         cost_regret.append(actual_cost_regret)
         cost_minmax.append(actual_cost_minmax)
         #cost_best_case.append(actual_cost_best_case)
