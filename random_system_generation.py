@@ -389,7 +389,7 @@ def gen_random_system_generalized(width, height, ap_names, ap_nums, num_uncertai
     # print("system generated.")
     # check reachability
 
-    # plot
+    # plot the env
     will_plot = False
     if will_plot:
         plt.figure(0)
@@ -706,7 +706,7 @@ def plot_determined_system(Node_list, Edge_list, Obstacle_edge_list, Initial_lis
         Path = path.Path(verts, codes)
         patch = patches.PathPatch(Path, edgecolor=linecolor, fill=False, lw=2)
         ax.add_patch(patch)
-
+    # plot the path
     plt.savefig("determined_system.png")
     visual_path(actual_path_1, 0.3, 'b')
     visual_path(actual_path_2, 0.7, 'r')
