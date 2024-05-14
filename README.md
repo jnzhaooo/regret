@@ -1,4 +1,4 @@
-# regret
+# Regret
 
-## To test
+## Usage
 - run `main.py`
