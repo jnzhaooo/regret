@@ -1,213 +1,177 @@
-from networkx.classes.digraph import DiGraph
-from basic_operations import PK_WTS, DFA, product, run_strategy_in_wts, WTS_of_PK_WTS, Dijskstra, PK_WTS_Grid, shortest_path
-from Knowledge_Game_Arena import Knowledge_Game_Arena
-from strategy_synthesis import regret_min_strategy_synthesis, min_max_strategy_synthesis, best_case_strategy_synthesis
-#from basic_visualization import visual_pk_wts, visual_PS, visual_Knowledge_Game_Arena
+from basic_operations import DFA, product, run_strategy_in_wts, WTS_of_PK_WTS
 from KGA import KGA
-from KGA_Grid import KGA_Grid
-from system_generation import generate_system, plot_system
-import random_system_generation
-import numpy as np
-from pandas import DataFrame
+from generate_pkwts import random_generate_pk_wts_repeat_game,best_case_strategy, random_generate_pk_wts_multi_label
+from new_operations import min_max_game,regret_min_strategy_synthesis, regret_min_strategy_synthesis_in_simple_reg_kga,best_case_strategy_synthesis,Dijkstra, regret_min_strategy_synthesis_in_tree 
 import time
-import multiprocessing
+import numpy as np
+from nx_to_igraph import simplify_networkx
+from basic_visualization import visual_pk_wts
+from new_operations import save_kga_to_file, load_kga_from_file
+import os
+import plot_box
 
-def write_data(filename,str1,cost1,str2=None,cost2=None,str3=None, cost3=None, str4=None,cost4=None):
-
-    data = { str1:cost1, str2:cost2, str3:cost3, str4:cost4}
-    df = DataFrame(data)
-    df.to_excel(filename)
 
 
-node_phi = [ 'q0', 'q1', 'q2' ]
-edge_phi = [ ('q0', 'q0', [[]], [['flag']]), ('q0', 'q1', [['flag']], [[]]), ('q1', 'q2', [[]], [[]]), ('q2', 'q2', [[]], [[]]) ]
-initial_phi = [ 'q0' ]
-acc_phi = [ 'q1' ]
-
-automaton = DFA(node_phi, edge_phi, initial_phi, acc_phi)
-
-def testing_1(times, probability):
-    '''
-    根据给定的pk-wts, 生成多个确定的wts
-    '''
-
+def testing_3(times,num_nodes, pro):
     cost_regret = []
     cost_minmax = []
     cost_best_case = []
-    
-    for i in range(times):
-        #get obs
-        potential_obstacles_id = []
-        for node in potential_obstacles:
-            potential_obstacles_id.append(np.ravel_multi_index([int(node[1]), int(node[3])],[width,height]))
-        pro = probability
-        pro_po = random_system_generation.get_obstacles_probability(potential_obstacles_id,pro)
-        obs = random_system_generation.get_obstacles_2(edge_list, pro_po,width, height)
+    cost_best_case_ = []
+    minmax_cost =[]
+    REG = []
+    file = './data/data_KGA/KGA_{}_2'.format(num_nodes)
+    sub_files = [os.path.join(file, f) for f in os.listdir(file)]
+    pk_wts_path = './data/data_pkwts/pkwts_{}_2'.format(num_nodes)
+    pkwts_files = [os.path.join(pk_wts_path, f) for f in os.listdir(pk_wts_path)]
+    for i in range(len(sub_files)):
+        if(i>times):
+            break
+        print("epoch:{}/{}".format(i+1,times))
+        t0 = time.time()
+        print(pro)
 
+        # load from file
+        
+        game_arena = load_kga_from_file(sub_files[i])
+        pk_wts = load_kga_from_file(pkwts_files[i])
+        
+        print(pk_wts)
 
-        wts = WTS_of_PK_WTS(pk_wts, obs)
-        actual_path_regret, actual_cost_regret = run_strategy_in_wts(wts, game_arena, regret_strategy)
+        potential_edge_list = []
+        for po in pk_wts.graph['uncer_edges']:
+            if np.random.rand(1) > pro:
+                potential_edge_list.append(po)
+        # potential_edge_list = []
+        print("potential_edge_list: ", potential_edge_list)
+        unexist_edges = list(set(pk_wts.graph['uncer_edges']) - set(potential_edge_list))
+        wts = WTS_of_PK_WTS(pk_wts, potential_edge_list)
+        
+        print(game_arena)
 
+        t1 = time.time()
+        regret_strategy,reg = regret_min_strategy_synthesis_in_simple_reg_kga(game_arena,True)  
+        t2 = time.time()
+        kga_simple, node_dict, node_dict_inverse = simplify_networkx(game_arena)
+        res, minmax_strategy = min_max_game(kga_simple)
+        t3 = time.time()
+        try:
+            actual_path_best_case, actual_cost_best_case = best_case_strategy(pk_wts,wts, pk_wts.graph['label_nodes'][1],pk_wts.graph['label_nodes'][2])
+        except:
+            continue
+        # best_case_strategy_ = best_case_strategy_synthesis(game_arena)
+        t4 = time.time()
+
+        # remapping the strategy
+        regret_strategy_node = dict()
+        minmax_strategy_node = dict()
+        for (k,v) in regret_strategy.items():
+            if v==None:
+                regret_strategy_node[node_dict_inverse[k]] = None
+            elif v=='stop':
+                regret_strategy_node[node_dict_inverse[k]] = 'stop'
+            else:
+                regret_strategy_node[node_dict_inverse[k]] = node_dict_inverse[v]
+        for (k,v) in minmax_strategy.items():
+            if v==None:
+                minmax_strategy_node[node_dict_inverse[k]] = None
+            elif v=='stop':
+                minmax_strategy_node[node_dict_inverse[k]] = 'stop'
+            else:
+                minmax_strategy_node[node_dict_inverse[k]] = node_dict_inverse[v]
+
+        actual_path_regret, actual_cost_regret = run_strategy_in_wts(wts, game_arena, regret_strategy_node)
+        t5 = time.time()
         print("actual_path:", actual_path_regret)
         print("actual_cost:", actual_cost_regret)
 
         print("----------------------")
         print("minmax strategy")
 
-        actual_path_minmax, actual_cost_minmax = run_strategy_in_wts(wts, game_arena, minmax_strategy)
-
+        actual_path_minmax, actual_cost_minmax = run_strategy_in_wts(wts, game_arena, minmax_strategy_node)
+        t6 = time.time()
         print("actual_path:", actual_path_minmax)
         print("actual_cost:", actual_cost_minmax)
-
-
-
+        REG.append(reg)
         print("----------------------")
-        print("best-case strategy")
-
-        actual_path_best_case, actual_cost_best_case = run_strategy_in_wts(wts, game_arena, best_case_strategy)
-
+        print("best_case strategy")
         print("actual_path:", actual_path_best_case)
         print("actual_cost:", actual_cost_best_case)
+        t7 = time.time()
 
-        #plot path
-        #plot_determined_system_2(node_list,edge_list,obs,initial_list,width, height,['flag'],actual_path_best_case, actual_path_minmax)
+
+
+        print("regret time: ", t2-t1+t5-t4)
+        print("minmax time: ", t3-t2+t6-t5)
+        print("best_case time: ", t4-t3+t7-t6)
+        print("total time: ", t7-t0)
+        
 
         cost_regret.append(actual_cost_regret)
         cost_minmax.append(actual_cost_minmax)
         cost_best_case.append(actual_cost_best_case)
+        # cost_best_case_.append(actual_cost_best_case_)
+        print("difference: ", [(cost_regret[i]-cost_minmax[i]) for i in range(len(cost_regret))])
+        print("regret: ", REG)
+        print("bast case: ",cost_best_case)
+        print("bast case_: ",cost_best_case_)
+
+        ave_regret = sum(cost_regret)/len(cost_regret)
+        ave_minmax = sum(cost_minmax)/len(cost_minmax)
+        ave_best_case = sum(cost_best_case)/len(cost_best_case)
+    
+        print("ave_regret: {}\n ave_minmax: {}\n ave_best_case: {}\n".format(ave_regret,ave_minmax,ave_best_case))
 
     return cost_regret, cost_minmax, cost_best_case
-    
 
-def testing_2(times,width,height,num_obstacle):
-    '''
-    多个pk-wts.每个pk-wts生成一个wts
-    '''
-    
-    cost_regret = []
-    cost_minmax = []
-    cost_best_case = []
-    
-    for i in range(times):
-        print("Epoch: {}/{}\n".format(i+1,times))
-        t0 = time.time()
-        node_list, edge_list, initial_list, potential_obstacles_id, potential_walls = random_system_generation.gen_random_system_task_specialized(
-            width, height,
-            ["flag"],
-            [1], num_obstacle,
-            45, 1,
-            1, 2, automaton)
+n_node = 20
 
+y1,y2,y3 = testing_3(100,n_node,0)
 
-        potential_obstacles = list()
-        for o in potential_obstacles_id:
-            potential_obstacles.append(node_list[o][0])
+# save data
+np.savetxt('./result/cost_regret_0.txt', y1)
+np.savetxt('./result/cost_minmax_0.txt', y2)
+np.savetxt('./result/cost_best_case_0.txt', y3)
+
+# #plot
+# plot_box.plot_violin(y1,y2,y3,'box_0.png')
+
+y1,y2,y3 = testing_3(100,n_node,0.2)
+
+# save data
+np.savetxt('./result/cost_regret_2.txt', y1) 
+np.savetxt('./result/cost_minmax_2.txt', y2)
+np.savetxt('./result/cost_best_case_2.txt', y3)
 
 
-        
-        #pk_wts = PK_WTS_Grid(node_list, edge_list, initial_list, potential_obstacles)
-        pk_wts = PK_WTS(node_list, edge_list, initial_list)
-        PS = product(pk_wts, automaton)
+# #plot
+# plot_box.plot_violin(y1,y2,y3,'box_2.png')
 
-        print(pk_wts)
+y1,y2,y3 = testing_3(100,n_node,0.5)
 
-        print(PS)
+# save data
+np.savetxt('./result/cost_regret_5.txt', y1)
+np.savetxt('./result/cost_minmax_5.txt', y2)
+np.savetxt('./result/cost_best_case_5.txt', y3)
 
-        game_arena = KGA(pk_wts, automaton, PS)
+# #plot
+# plot_box.plot_violin(y1,y2,y3,'box_5.png')
 
-        #visual_Knowledge_Game_Arena(game_arena)
+y1,y2,y3 = testing_3(100,n_node,0.8)
 
-        print(game_arena)
+# save data
+np.savetxt('./result/cost_regret_8.txt', y1)
+np.savetxt('./result/cost_minmax_8.txt', y2)
+np.savetxt('./result/cost_best_case_8.txt', y3)
 
-        regret_strategy = regret_min_strategy_synthesis(game_arena)
-        minmax_strategy = min_max_strategy_synthesis(game_arena)
-        best_case_strategy = best_case_strategy_synthesis(game_arena)
+# #plot
+# plot_box.plot_violin(y1,y2,y3,'box_8.png')
 
-        #get obs
-        potential_obstacles_id = []
-        for node in potential_obstacles:
-            potential_obstacles_id.append(np.ravel_multi_index([int(node[1]), int(node[3])],[width,height]))
-        pro = []
-        for obs in potential_obstacles:
-            pro.append(np.random.rand(1))
-        pro_po = random_system_generation.get_obstacles_probability(potential_obstacles_id,pro)
-        obs = random_system_generation.get_obstacles(edge_list, pro_po,width, height)
-        random_system_generation.plot_system_wall(node_list, edge_list,potential_walls, obs, initial_list, width,height, ["flag"])
+y1,y2,y3 = testing_3(100,n_node,1)
 
+# save data
+np.savetxt('./result/cost_regret_10.txt', y1)
+np.savetxt('./result/cost_minmax_10.txt', y2)
+np.savetxt('./result/cost_best_case_10.txt', y3)
 
-
-        wts = WTS_of_PK_WTS(pk_wts, obs)
-        actual_path_regret, actual_cost_regret = run_strategy_in_wts(wts, game_arena, regret_strategy)
-
-        print("actual_path:", actual_path_regret)
-        print("actual_cost:", actual_cost_regret)
-
-        print("----------------------")
-        print("minmax strategy")
-
-        actual_path_minmax, actual_cost_minmax = run_strategy_in_wts(wts, game_arena, minmax_strategy)
-
-        print("actual_path:", actual_path_minmax)
-        print("actual_cost:", actual_cost_minmax)
-
-        print("----------------------")
-        #print("best-case strategy")
-
-        #actual_path_best_case, actual_cost_best_case = run_strategy_in_wts(wts, game_arena, best_case_strategy)
-
-        #print("actual_path:", actual_path_best_case)
-        #print("actual_cost:", actual_cost_best_case)
-
-        #random_system_generation.plot_determined_system_wall(node_list,edge_list,potential_walls, obs,initial_list,width,height,['flag'],actual_path_regret,actual_path_minmax)
-        cost_regret.append(actual_cost_regret)
-        cost_minmax.append(actual_cost_minmax)
-        #cost_best_case.append(actual_cost_best_case)
-        t1 = time.time()
-        print("total time: ", (t1-t0))
-
-    return cost_regret, cost_minmax, cost_best_case
-    
-   
-
-
-#一个pk-wts生成多个wts
-width = 5
-height = 5
-obstacles = [(2,0),(3,0),(4,0),(1,1),(2,1),(3,1),(1,2),(3,3)]
-initial = [(4,2)]
-pro_obstacles = [(2,2)]
-pro = []
-for obs in pro_obstacles:
-    pro.append(np.random.rand(1))
-ap = {'flag':(0,0)}
-""" node_list,edge_list,initial_list,potential_obstacles = generate_system(width, height, initial,ap,obstacles,pro_obstacles)
-#plot_system(node_list, edge_list, potential_obstacles, initial_list, width, height, ['flag'])
-pk_wts = PK_WTS_Grid(node_list, edge_list, initial_list, potential_obstacles)
-PS = product(pk_wts, automaton)
-print(pk_wts)
-print(PS)
-#game_arena = Knowledge_Game_Arena(pk_wts, automaton, PS)
-game_arena = KGA_Grid(pk_wts, automaton, PS)
-#visual_Knowledge_Game_Arena(game_arena)
-print(game_arena)
-regret_strategy = regret_min_strategy_synthesis(game_arena)
-minmax_strategy = min_max_strategy_synthesis(game_arena)
-best_case_strategy = best_case_strategy_synthesis(game_arena)
-cost_regret,cost_minmax,cost_best_case = testing_1(1,pro) """
-#write_data('cost_1.xlsx','cost_regret',cost_regret,'cost_minmax',cost_minmax,'cost_best_case',cost_best_case)
-
-
-
-#多个pk-wts.每个pk-wts生成一个wts
-#proba = [0.5]
-cost_regret,cost_minmax,cost_best_case = testing_2(1,width=10,height=10,num_obstacle=2)
-
-#write_data('cost_2.xlsx','cost_regret',cost_regret,'cost_minmax',cost_minmax,'cost_best_case',cost_best_case)
-
-ave_regret = sum(cost_regret)/len(cost_regret)
-ave_minmax = sum(cost_minmax)/len(cost_minmax)
-ave_best_case = 0
-#ave_best_case = sum(cost_best_case)/len(cost_best_case)
-
-print("ave_regret: {}\n ave_minmax: {}\n ave_best_case: {}\n".format(ave_regret,ave_minmax,ave_best_case))
-
+# #plot
+# plot_box.plot_violin(y1,y2,y3,'box_10.png')

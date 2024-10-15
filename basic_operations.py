@@ -1,5 +1,6 @@
 from networkx.classes.digraph import DiGraph
 from itertools import chain, combinations
+import heapq
 
 def WTS_of_PK_WTS(pk_wts, edge_list):
     generator = WTS(pk_wts, edge_list)
@@ -56,44 +57,6 @@ def run_strategy_in_wts(wts, KGA, strategy_KGA):
             break
             
     return actual_path, actual_cost
-
-class PK_WTS_Grid(DiGraph):
-    def __init__(self, node_list, edge_list, initial_list, potential_obstacles):
-        DiGraph.__init__(self, initial=set())
-        for item in node_list:
-            self.add_node(item[0], label=item[1])
-
-        for item in initial_list:
-            self.graph['initial'].add(item)
-
-        for item in edge_list:
-            self.add_edge(item[0], item[1], cost=item[2], uncertainty=item[3])
-            if item[3] == True:
-                self.add_edge(item[1], item[0], cost=item[2], uncertainty=item[3])
-
-
-        nodes_set = set(self.nodes)
-        for node in nodes_set:
-            uncertain_successors = set()
-            certain_successors = set()
-            for neighbor in self.successors(node):
-                if self.edges[(node, neighbor)]['uncertainty'] == True:
-                    uncertain_successors.add(neighbor)
-                else:
-                    certain_successors.add(neighbor)
-
-            successor_patterns = list()
-            subset_of_uncertain_succesors = powerset(uncertain_successors)
-            for item in subset_of_uncertain_succesors:
-                successors_item = set()
-                for neighbor in item:
-                    successors_item.add(neighbor)
-                for neighbor_known in certain_successors:
-                    successors_item.add(neighbor_known)
-                successor_patterns.append(tuple(successors_item))
-            self.nodes[node]['successor_patterns'] = successor_patterns
-
-        self.potential_obstacles = potential_obstacles
 
 
 class PK_WTS(DiGraph):
@@ -219,54 +182,25 @@ def powerset(iterable):
     return chain.from_iterable(combinations(s, r) for r in range(len(s)+1))
 
 
-def Dijskstra(graph, start_node, end_nodes):
-    unvisited_nodes = {node: 99999 for node in list(graph.nodes)}
-    unvisited_nodes[start_node] = 0
+def dijkstra_algorithm(graph, start_node, end_nodes):
+    distances = {node: float('infinity') for node in graph}
+    distances[start_node] = 0
+    priority_queue = [(0, start_node)]
     shortest_paths = {start_node: (0, [])}
 
-    while unvisited_nodes:
-        current_node = min(unvisited_nodes, key=unvisited_nodes.get)
-        current_distance = unvisited_nodes[current_node]
+    while priority_queue:
+        current_distance, current_node = heapq.heappop(priority_queue)
 
-        for neighbor in graph.successors(current_node):
-            if neighbor not in unvisited_nodes:
-                continue
-            new_distance = graph.edges[(current_node, neighbor)]['cost'] + current_distance
-            if new_distance < unvisited_nodes[neighbor]:
-                unvisited_nodes[neighbor] = new_distance
-                shortest_paths[neighbor] = (new_distance, shortest_paths[current_node][1] + [current_node])
+        if current_distance > distances[current_node]:
+            continue
 
-        unvisited_nodes.pop(current_node)
-
-    shortest_length = list()
-    for node in end_nodes:
-        if node in shortest_paths:
-            shortest_length.append(shortest_paths[node][0])
-        else:
-            shortest_length.append(9999)
-    if shortest_length:
-        return min(shortest_length)
-    else:
-        return 99999
-
-def shortest_path(graph, start_node, end_nodes):
-    unvisited_nodes = {node: 99999 for node in list(graph.nodes)}
-    unvisited_nodes[start_node] = 0
-    shortest_paths = {start_node: (0, [])}
-
-    while unvisited_nodes:
-        current_node = min(unvisited_nodes, key=unvisited_nodes.get)
-        current_distance = unvisited_nodes[current_node]
-
-        for neighbor in graph.successors(current_node):
-            if neighbor not in unvisited_nodes:
-                continue
-            new_distance = graph.edges[(current_node, neighbor)]['cost'] + current_distance
-            if new_distance < unvisited_nodes[neighbor]:
-                unvisited_nodes[neighbor] = new_distance
-                shortest_paths[neighbor] = (new_distance, shortest_paths[current_node][1] + [current_node])
-
-        unvisited_nodes.pop(current_node)
+        for neighbor in graph[current_node]:
+            weight = graph[current_node][neighbor]['cost']
+            distance = current_distance + weight
+            if distance < distances[neighbor]:
+                distances[neighbor] = distance
+                heapq.heappush(priority_queue, (distance, neighbor))
+                shortest_paths[neighbor] = (distance, shortest_paths[current_node][1] + [current_node])
 
     shortest_length = 99999
     shortest_path = None
@@ -275,4 +209,4 @@ def shortest_path(graph, start_node, end_nodes):
             if shortest_paths[node][0] < shortest_length:
                 shortest_length = shortest_paths[node][0]
                 shortest_path = shortest_paths[node][1]
-    return shortest_path
+    return shortest_length, shortest_path

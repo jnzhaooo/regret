@@ -9,16 +9,15 @@ class KGA(DiGraph):
 
         initial_of_PS = list(PS.graph['initial'])[0]
 
-        initial_known_transitions = set()
-        for edge in PK_WTS.edges:
-            if PK_WTS.edges[edge]['uncertainty'] == False:
-                initial_known_transitions.add(edge)
+        # 使用集合推导式提高效率
+        initial_known_transitions = {
+            edge for edge in PK_WTS.edges if not PK_WTS.edges[edge]['uncertainty']
+        }
 
-        initial_explored_states = set()
-
-        for node in PK_WTS.nodes:
-            if len(PK_WTS.nodes[node]['successor_patterns']) < 2:
-                initial_explored_states.add(node)
+        # 使用集合推导式提高效率
+        initial_explored_states = {
+            node for node in PK_WTS.nodes if len(PK_WTS.nodes[node]['successor_patterns']) < 2
+        }
         
         initial_knowledge = (tuple(initial_explored_states), tuple(initial_known_transitions))
 
@@ -29,21 +28,16 @@ class KGA(DiGraph):
         self.graph['initial'].add(initial_node)
         agent_nodes.add(initial_node)
     
-        todo_list = list()
+        todo_list = [initial_node]  # 直接用列表初始化
         already_set = set()
 
-        todo_list.append(initial_node)
-
-
-        while len(todo_list) != 0:
+        while todo_list:
             node = todo_list.pop()
             already_set.add(node)
             if node in agent_nodes:
-                x = node[0]
-                q = node[1]
-                knowledge = node[2]
+                x, q, knowledge = node
                 for x_next in PK_WTS.successors(x):
-                    if (x, x_next) in set(knowledge[1]) and self.legal_transition(PS, (x,q), x_next):
+                    if (x, x_next) in knowledge[1] and self.legal_transition(PS, (x,q), x_next):
                         flag, vertex = self.has_the_node((x,q,knowledge,x_next))
                         if flag:
                             self.add_edge((x,q,knowledge), vertex, cost=PK_WTS.edges[(x, x_next)]['cost'])
@@ -51,14 +45,11 @@ class KGA(DiGraph):
                             self.add_edge((x,q,knowledge), (x,q,knowledge,x_next), cost=PK_WTS.edges[(x, x_next)]['cost'])
                             env_nodes.add((x,q,knowledge,x_next))
             else:
-                x = node[0]
-                q = node[1]
-                knowledge = node[2]
-                x_next = node[3]
+                x, q, knowledge, x_next = node
                 for neighbor in list(PS.successors((x,q))):
                     if neighbor[0] == x_next:
                         q_next = neighbor[1]
-                if x_next in set(knowledge[0]):
+                if x_next in knowledge[0]:
                     flag, vertex = self.has_the_node((x_next, q_next, knowledge))
                     if flag:
                         self.add_edge((x,q,knowledge,x_next), vertex, cost=0)
@@ -70,7 +61,7 @@ class KGA(DiGraph):
                         explored_states = list(knowledge[0])
                         explored_states.append(x_next)
                         known_transitions = set(knowledge[1])
-                        for x_next_next in set(successor_pattern):
+                        for x_next_next in successor_pattern:
                             if x_next_next not in explored_states:
                                 observation_set = {(x_next, x_next_next), (x_next_next, x_next)}
                                 known_transitions = known_transitions | observation_set
@@ -82,17 +73,16 @@ class KGA(DiGraph):
                             self.add_edge((x,q,knowledge,x_next), (x_next, q_next, knowledge_next), cost=0)
                             agent_nodes.add((x_next,q_next,knowledge_next))
 
-            for neighbor in self.successors(node):
-                if neighbor not in already_set:
-                    todo_list.append(neighbor)
+            todo_list.extend(
+                neighbor for neighbor in self.successors(node) if neighbor not in already_set
+            )
 
-        for node in agent_nodes:
-            self.graph['agent'].add(node)
-            if (node[0], node[1]) in PS.graph['acc']:
-                self.graph['acc'].add(node)
-
-        for node in env_nodes:
-            self.graph['env'].add(node)
+        # 集合推导式用于加速节点分类
+        self.graph['agent'].update(agent_nodes)
+        self.graph['acc'].update(
+            node for node in agent_nodes if (node[0], node[1]) in PS.graph['acc']
+        )
+        self.graph['env'].update(env_nodes)
 
         self.knowledge_dict = dict()
         self.generate_knowledge_dict()
@@ -124,10 +114,8 @@ class KGA(DiGraph):
         
 
     def legal_transition(self, PS, node, x_next):
-        for neighbor in PS.successors(node):
-            if neighbor[0] == x_next:
-                return True
-        return False
+        # 使用任意迭代器进行简化判断，避免不必要的遍历
+        return any(neighbor[0] == x_next for neighbor in PS.successors(node))
 
     def print_nodes(self):
         for node in self.nodes:
